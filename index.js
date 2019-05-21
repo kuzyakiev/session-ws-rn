@@ -520,7 +520,6 @@ function generateSessionId(sess) {
 function getcookie(req, name, secrets) {
   var header = req.headers['ws-cookie'];
   debug('headers', req.headers);
-  if(header) return header;
   var raw;
   var val;
 
