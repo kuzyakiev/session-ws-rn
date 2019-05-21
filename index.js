@@ -1,5 +1,10 @@
 /*!
- * express-session
+ * express-session-ws-rn
+ * Copyright(c) 2019 Kudrenko Oleg
+ * MIT Licensed
+ */
+/*!
+ * forked from express-session
  * Copyright(c) 2010 Sencha Inc.
  * Copyright(c) 2011 TJ Holowaychuk
  * Copyright(c) 2014-2015 Douglas Christopher Wilson
@@ -13,20 +18,19 @@
  * @private
  */
 
-var Buffer = require('safe-buffer').Buffer
 var cookie = require('cookie');
-var crypto = require('crypto')
+var crc = require('crc').crc32;
 var debug = require('debug')('express-session');
 var deprecate = require('depd')('express-session');
-var onHeaders = require('on-headers')
 var parseUrl = require('parseurl');
-var signature = require('cookie-signature')
 var uid = require('uid-safe').sync
+  , onHeaders = require('on-headers')
+  , signature = require('cookie-signature')
 
-var Cookie = require('./session/cookie')
-var MemoryStore = require('./session/memory')
 var Session = require('./session/session')
-var Store = require('./session/store')
+  , MemoryStore = require('./session/memory')
+  , Cookie = require('./session/cookie')
+  , Store = require('./session/store')
 
 // environment
 
@@ -150,7 +154,7 @@ function session(options) {
   // notify user that this store is not
   // meant for a production environment
   /* istanbul ignore next: not tested */
-  if (env === 'production' && store instanceof MemoryStore) {
+  if ('production' == env && store instanceof MemoryStore) {
     console.warn(warning);
   }
 
@@ -213,11 +217,14 @@ function session(options) {
     // expose store
     req.sessionStore = store;
 
+    debug('try to get sessionID from coookie with name %s and secrets %s', name, secrets);
     // get the session ID from the cookie
     var cookieId = req.sessionID = getcookie(req, name, secrets);
 
-    // set-cookie
+    // set-ws-cookie
     onHeaders(res, function(){
+      debug('onHeaders');
+
       if (!req.session) {
         debug('no session');
         return;
@@ -282,7 +289,7 @@ function session(options) {
         if (!isNaN(contentLength) && contentLength > 0) {
           // measure chunk
           chunk = !Buffer.isBuffer(chunk)
-            ? Buffer.from(chunk, encoding)
+            ? new Buffer(chunk, encoding)
             : chunk;
           encoding = undefined;
 
@@ -361,19 +368,6 @@ function session(options) {
       originalId = req.sessionID;
       originalHash = hash(req.session);
       wrapmethods(req.session);
-    }
-
-    // inflate the session
-    function inflate (req, sess) {
-      store.createSession(req, sess)
-      originalId = req.sessionID
-      originalHash = hash(sess)
-
-      if (!resaveSession) {
-        savedHash = originalHash
-      }
-
-      wrapmethods(req.session)
     }
 
     // wrap session methods
@@ -456,7 +450,7 @@ function session(options) {
         return false;
       }
 
-      return cookieId !== req.sessionID
+      return cookieId != req.sessionID
         ? saveUninitializedSession || isModified(req.session)
         : rollingSessions || req.session.cookie.expires != null && isModified(req.session);
     }
@@ -473,26 +467,34 @@ function session(options) {
     debug('fetching %s', req.sessionID);
     store.get(req.sessionID, function(err, sess){
       // error handling
-      if (err && err.code !== 'ENOENT') {
+      if (err) {
         debug('error %j', err);
-        next(err)
-        return
-      }
 
-      try {
-        if (err || !sess) {
-          debug('no session found')
-          generate()
-        } else {
-          debug('session found')
-          inflate(req, sess)
+        if (err.code !== 'ENOENT') {
+          next(err);
+          return;
         }
-      } catch (e) {
-        next(e)
-        return
+
+        generate();
+        // no session
+      } else if (!sess) {
+        debug('no session found');
+        generate();
+        // populate req.session
+      } else {
+        debug('session found');
+        store.createSession(req, sess);
+        originalId = req.sessionID;
+        originalHash = hash(sess);
+
+        if (!resaveSession) {
+          savedHash = originalHash
+        }
+
+        wrapmethods(req.session);
       }
 
-      next()
+      next();
     });
   };
 };
@@ -516,13 +518,17 @@ function generateSessionId(sess) {
  */
 
 function getcookie(req, name, secrets) {
-  var header = req.headers.cookie;
+  var header = req.headers['ws-cookie'];
+  debug('headers', req.headers);
+  if(header) return header;
   var raw;
   var val;
 
   // read from cookie header
   if (header) {
     var cookies = cookie.parse(header);
+
+    debug('cookies', cookies);
 
     raw = cookies[name];
 
@@ -583,21 +589,14 @@ function getcookie(req, name, secrets) {
  */
 
 function hash(sess) {
-  // serialize
-  var str = JSON.stringify(sess, function (key, val) {
+  return crc(JSON.stringify(sess, function (key, val) {
     // ignore sess.cookie property
     if (this === sess && key === 'cookie') {
       return
     }
 
     return val
-  })
-
-  // hash
-  return crypto
-    .createHash('sha1')
-    .update(str, 'utf8')
-    .digest('hex')
+  }))
 }
 
 /**
@@ -622,7 +621,10 @@ function issecure(req, trustProxy) {
 
   // no explicit trust; try req.secure from express
   if (trustProxy !== true) {
-    return req.secure === true
+    var secure = req.secure;
+    return typeof secure === 'boolean'
+      ? secure
+      : false;
   }
 
   // read the proto from x-forwarded-proto header
@@ -645,12 +647,12 @@ function setcookie(res, name, val, secret, options) {
   var signed = 's:' + signature.sign(val, secret);
   var data = cookie.serialize(name, signed, options);
 
-  debug('set-cookie %s', data);
+  debug('set-ws-cookie %s', data);
 
-  var prev = res.getHeader('Set-Cookie') || []
+  var prev = res.getHeader('set-ws-cookie') || [];
   var header = Array.isArray(prev) ? prev.concat(data) : [prev, data];
 
-  res.setHeader('Set-Cookie', header)
+  res.setHeader('set-ws-cookie', header)
 }
 
 /**
