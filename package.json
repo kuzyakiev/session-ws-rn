@@ -1,6 +1,6 @@
 {
   "name": "express-session-ws-rn",
-  "version": "1.16.3",
+  "version": "1.16.4",
   "description": "Simple session middleware for Express to work with React Native WebSockets",
   "author": "Oleg Kudrenko <oleg.kudrenko@gmail.com>",
   "contributors": [
@@ -13,6 +13,7 @@
   "dependencies": {
     "cookie": "0.3.1",
     "cookie-signature": "1.0.6",
+    "crc": "^3.8.0",
     "debug": "2.6.9",
     "depd": "~2.0.0",
     "on-headers": "~1.0.2",
